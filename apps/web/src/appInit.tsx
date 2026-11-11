@@ -11,6 +11,7 @@ import { startPreviewTitleRecording } from "./browserHistoryStore";
 import { retainThreadOverlaysForThread } from "./components/chat/threadOverlayRetention";
 import { startBackgroundThreadAnnouncements } from "./components/BackgroundThreadAnnouncer";
 import { startSshPasswordPromptQueue } from "./components/desktop/SshPasswordPromptDialog";
+import { startBedtimeReminderToasts } from "./components/BedtimeReminderToast";
 import { startHostFreezeToasts } from "./components/HostFreezeToastCoordinator";
 import { startKeybindingsUpdateToasts } from "./components/KeybindingsUpdateToast";
 import { startLegacyThreadMigrationToast } from "./components/LegacyThreadMigrationToast";
@@ -214,6 +215,7 @@ export function startAppServices(): AppRouter {
   startSshPasswordPromptQueue();
 
   startKeybindingsUpdateToasts();
+  startBedtimeReminderToasts();
   startSlowRpcRequestToasts();
   startHostFreezeToasts();
   startLegacyThreadMigrationToast();

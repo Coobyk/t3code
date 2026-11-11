@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { BedtimeReminderSettings } from "./BedtimeReminderSettings";
 import { NotificationSettings } from "./NotificationSettings";
 import { PRIVACY_POLICY_URL } from "../../legalLinks";
 import { CheckIcon } from "lucide-react";
@@ -1711,6 +1712,12 @@ export function ThreadsSettingsPanel() {
       {!isProjectScope ? (
         <SettingsSection id="snooze" title="Snooze">
           <SnoozePresetsRow />
+        </SettingsSection>
+      ) : null}
+
+      {!isProjectScope ? (
+        <SettingsSection id="bedtime-reminder" title="Bedtime reminder">
+          <BedtimeReminderSettings />
         </SettingsSection>
       ) : null}
 

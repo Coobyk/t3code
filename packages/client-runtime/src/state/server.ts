@@ -1339,6 +1339,10 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:scheduled-tasks:live",
       tag: WS_METHODS.scheduledTasksSubscribe,
     }),
+    bedtimeReminderLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:bedtime-reminder:live",
+      tag: WS_METHODS.bedtimeReminderSubscribe,
+    }),
     // A cold transcript scan is measured in seconds, so keep the result around
     // long enough that switching windows or re-rendering does not rescan.
     usageSummary: createEnvironmentRpcQueryAtomFamily(runtime, {
@@ -1587,6 +1591,10 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.scheduledTasksRotateWebhookToken,
       scheduler: configScheduler,
       concurrency: configConcurrency,
+    }),
+    acknowledgeBedtimeReminder: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:bedtime-reminder:acknowledge",
+      tag: WS_METHODS.bedtimeReminderAcknowledge,
     }),
     createGuestShare: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:guest-share:create",
