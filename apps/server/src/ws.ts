@@ -2388,7 +2388,6 @@ export const layerWsRpc = (
             Effect.andThen(scheduledTasks.getWebhookDelivery(input)),
           ),
         [WS_METHODS.bedtimeReminderSubscribe]: (_input) => bedtimeReminder.streamChanges,
-        [WS_METHODS.bedtimeReminderAcknowledge]: (input) => bedtimeReminder.acknowledge(input),
         [WS_METHODS.serverProbe]: (_input) => Effect.succeed({}),
         [WS_METHODS.serverGetConfig]: (_input) =>
           loadServerConfig({

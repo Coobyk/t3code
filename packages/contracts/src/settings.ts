@@ -52,12 +52,7 @@ import {
   ProviderDriverKind,
 } from "./providerInstance.ts";
 import { PullRequestMergeMethod } from "./pullRequest.ts";
-import {
-  BedtimeReminderNudgeIntervalMinutes,
-  BedtimeReminderTimeOfDay,
-  DEFAULT_BEDTIME_NUDGE_INTERVAL_MINUTES,
-  DEFAULT_BEDTIME_REMINDER_TIME,
-} from "./bedtimeReminder.ts";
+import { BedtimeReminderTimeOfDay } from "./bedtimeReminder.ts";
 import {
   CloudSpeechModelId,
   SpeechAcceleration,
@@ -1434,16 +1429,8 @@ export const ServerSettings = Schema.Struct({
   idleCompaction: Schema.optionalKey(IdleCompactionMode),
   snoozeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  bedtimeReminderEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /** Local time-of-day on the environment, "HH:MM". */
-  bedtimeReminderTime: BedtimeReminderTimeOfDay.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_BEDTIME_REMINDER_TIME)),
-  ),
-  bedtimeReminderNudgeIntervalMinutes: BedtimeReminderNudgeIntervalMinutes.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_BEDTIME_NUDGE_INTERVAL_MINUTES)),
-  ),
-  /** ISO instant of the bedtime occurrence the user answered; null arms the next one. */
-  bedtimeReminderAcknowledgedFor: Schema.NullOr(Schema.String).pipe(
+  /** Local time-of-day on the environment, "HH:MM"; null turns the reminder off. */
+  bedtimeReminderTime: Schema.NullOr(BedtimeReminderTimeOfDay).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   snoozePresets: SnoozePresetSettings.pipe(
@@ -1882,10 +1869,7 @@ export const ServerSettingsPatch = Schema.Struct({
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   snoozeLimitedThreads: Schema.optionalKey(Schema.Boolean),
-  bedtimeReminderEnabled: Schema.optionalKey(Schema.Boolean),
-  bedtimeReminderTime: Schema.optionalKey(BedtimeReminderTimeOfDay),
-  bedtimeReminderNudgeIntervalMinutes: Schema.optionalKey(BedtimeReminderNudgeIntervalMinutes),
-  bedtimeReminderAcknowledgedFor: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  bedtimeReminderTime: Schema.optionalKey(Schema.NullOr(BedtimeReminderTimeOfDay)),
   snoozePresets: Schema.optionalKey(SnoozePresetSettings),
   hiddenThreadTags: Schema.optionalKey(Schema.Array(Schema.String)),
   hideTaggedThreads: Schema.optionalKey(Schema.Boolean),

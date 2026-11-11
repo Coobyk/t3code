@@ -383,7 +383,7 @@ import {
   ScheduledTaskUpsertInput,
   ScheduledTaskMutationResult,
 } from "./scheduledTask.ts";
-import { BedtimeReminderAcknowledgeInput, BedtimeReminderState } from "./bedtimeReminder.ts";
+import { BedtimeReminderState } from "./bedtimeReminder.ts";
 import { SecretRequestAnswerInput, SecretRequestError } from "./secretRequest.ts";
 import {
   ProjectCloneActionInput,
@@ -561,7 +561,6 @@ export const WS_METHODS = {
   scheduledTasksGetWebhookDelivery: "scheduledTasks.getWebhookDelivery",
 
   bedtimeReminderSubscribe: "bedtimeReminder.subscribe",
-  bedtimeReminderAcknowledge: "bedtimeReminder.acknowledge",
 
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
   cloudInstallRelayClient: "cloud.installRelayClient",
@@ -2056,12 +2055,6 @@ const WsBedtimeReminderSubscribeRpc = Rpc.make(WS_METHODS.bedtimeReminderSubscri
   stream: true,
 });
 
-const WsBedtimeReminderAcknowledgeRpc = Rpc.make(WS_METHODS.bedtimeReminderAcknowledge, {
-  payload: BedtimeReminderAcknowledgeInput,
-  success: BedtimeReminderState,
-  error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
-});
-
 const WsSubscribeAuthAccessRpc = Rpc.make(WS_METHODS.subscribeAuthAccess, {
   payload: Schema.Struct({}),
   success: AuthAccessStreamEvent,
@@ -2151,7 +2144,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsScheduledTasksListWebhookDeliveriesRpc,
   WsScheduledTasksGetWebhookDeliveryRpc,
   WsBedtimeReminderSubscribeRpc,
-  WsBedtimeReminderAcknowledgeRpc,
   WsServerReportClientActivityRpc,
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,

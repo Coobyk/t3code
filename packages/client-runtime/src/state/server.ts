@@ -1592,10 +1592,6 @@ export function createServerEnvironmentAtoms<R, E>(
       scheduler: configScheduler,
       concurrency: configConcurrency,
     }),
-    acknowledgeBedtimeReminder: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:bedtime-reminder:acknowledge",
-      tag: WS_METHODS.bedtimeReminderAcknowledge,
-    }),
     createGuestShare: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:guest-share:create",
       tag: WS_METHODS.guestShareCreate,

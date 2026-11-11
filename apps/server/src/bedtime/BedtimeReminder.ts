@@ -1,15 +1,9 @@
-import {
-  type BedtimeReminderAcknowledgeInput,
-  type BedtimeReminderState,
-  type ServerSettings,
-  ServerSettingsError,
-} from "@t3tools/contracts";
+import { type BedtimeReminderState, type ServerSettings } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -24,24 +18,16 @@ export class BedtimeReminder extends Context.Service<
   {
     readonly current: Effect.Effect<BedtimeReminderState>;
     readonly streamChanges: Stream.Stream<BedtimeReminderState>;
-    readonly acknowledge: (
-      input: BedtimeReminderAcknowledgeInput,
-    ) => Effect.Effect<BedtimeReminderState, ServerSettingsError>;
   }
 >()("t3/bedtime/BedtimeReminder") {}
 
-type BedtimeSettings = Pick<
-  ServerSettings,
-  | "bedtimeReminderEnabled"
-  | "bedtimeReminderTime"
-  | "bedtimeReminderNudgeIntervalMinutes"
-  | "bedtimeReminderAcknowledgedFor"
->;
+type BedtimeSettings = Pick<ServerSettings, "bedtimeReminderTime">;
 
-// "Morning": nudges give up this long after bedtime even when unanswered.
-const BEDTIME_NUDGE_WINDOW_MS = 10 * 60 * 60 * 1000;
+// "Morning": the reminder gives up this long after bedtime even when unanswered.
+const BEDTIME_REMINDER_WINDOW_MS = 10 * 60 * 60 * 1000;
 
-function parseTimeOfDay(value: string): { hour: number; minute: number } | null {
+function parseTimeOfDay(value: string | null): { hour: number; minute: number } | null {
+  if (value === null) return null;
   const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value.trim());
   if (!match) return null;
   return { hour: Number(match[1]), minute: Number(match[2]) };
@@ -49,30 +35,21 @@ function parseTimeOfDay(value: string): { hour: number; minute: number } | null 
 
 const iso = (value: DateTime.DateTime): string => DateTime.formatIso(DateTime.toUtc(value));
 
-const epochMillis = (value: string | null): number | null => {
-  if (value === null) return null;
-  const parsed = DateTime.make(value);
-  return Option.isSome(parsed) ? DateTime.toEpochMillis(parsed.value) : null;
-};
-
-interface BedtimeReminderComputation {
+export interface BedtimeReminderComputation {
   readonly state: BedtimeReminderState;
   /** Next instant the state can change; Infinity when nothing is scheduled. */
   readonly dueAtMs: number;
 }
 
 /**
- * Derives the reminder state at `now` (a local-zoned DateTime). Each "night" is keyed
- * by the bedtime occurrence it started at, so acknowledging stores the occurrence's
- * ISO instant and automatically re-arms the next one.
+ * Derives the reminder state at `now` (a local-zoned DateTime). Once the day's
+ * bedtime passes the state stays "reminding" until the morning window ends, then
+ * schedules the next day.
  */
 export function bedtimeReminderStateAt(
   settings: BedtimeSettings,
   now: DateTime.DateTime,
 ): BedtimeReminderComputation {
-  if (!settings.bedtimeReminderEnabled) {
-    return { state: { kind: "off" }, dueAtMs: Infinity };
-  }
   const time = parseTimeOfDay(settings.bedtimeReminderTime);
   if (time === null) {
     return { state: { kind: "off" }, dueAtMs: Infinity };
@@ -88,54 +65,19 @@ export function bedtimeReminderStateAt(
   const last = pastToday ? bedtimeToday : DateTime.add(bedtimeToday, { days: -1 });
   const next = pastToday ? DateTime.add(bedtimeToday, { days: 1 }) : bedtimeToday;
   const lastMs = DateTime.toEpochMillis(last);
-  const nextMs = DateTime.toEpochMillis(next);
-  const acknowledgedMs = epochMillis(settings.bedtimeReminderAcknowledgedFor);
 
-  const windowEndMs = lastMs + BEDTIME_NUDGE_WINDOW_MS;
-  if (acknowledgedMs !== lastMs && nowMs < windowEndMs) {
-    const intervalMs = settings.bedtimeReminderNudgeIntervalMinutes * 60_000;
-    const nudgeIndex = Math.floor((nowMs - lastMs) / intervalMs);
-    const nextNudgeAtMs = lastMs + (nudgeIndex + 1) * intervalMs;
+  const windowEndMs = lastMs + BEDTIME_REMINDER_WINDOW_MS;
+  if (nowMs < windowEndMs) {
     return {
-      state: {
-        kind: "reminding",
-        nightStartedAt: iso(last),
-        nudgeIndex,
-        nextNudgeAt: iso(DateTime.makeUnsafe(nextNudgeAtMs)),
-      },
-      dueAtMs: Math.min(nextNudgeAtMs, windowEndMs),
+      state: { kind: "reminding", nightStartedAt: iso(last) },
+      dueAtMs: windowEndMs,
     };
   }
 
-  // A skipped upcoming bedtime shifts the next fire to the following day.
-  const nextFire = acknowledgedMs === nextMs ? DateTime.add(next, { days: 1 }) : next;
   return {
-    state: {
-      kind: "scheduled",
-      nextFireAt: iso(nextFire),
-      acknowledged: acknowledgedMs === lastMs || acknowledgedMs === nextMs,
-    },
-    dueAtMs: DateTime.toEpochMillis(nextFire),
+    state: { kind: "scheduled", nextFireAt: iso(next) },
+    dueAtMs: DateTime.toEpochMillis(next),
   };
-}
-
-/** The occurrence an `acknowledge` applies to: the active night, else the next one. */
-function acknowledgeTarget(settings: BedtimeSettings, now: DateTime.DateTime): DateTime.DateTime {
-  const time = parseTimeOfDay(settings.bedtimeReminderTime) ?? { hour: 23, minute: 0 };
-  const nowMs = DateTime.toEpochMillis(now);
-  const bedtimeToday = DateTime.setParts(now, {
-    hour: time.hour,
-    minute: time.minute,
-    second: 0,
-    millisecond: 0,
-  });
-  const pastToday = nowMs >= DateTime.toEpochMillis(bedtimeToday);
-  const last = pastToday ? bedtimeToday : DateTime.add(bedtimeToday, { days: -1 });
-  const lastMs = DateTime.toEpochMillis(last);
-  const reminding =
-    epochMillis(settings.bedtimeReminderAcknowledgedFor) !== lastMs &&
-    nowMs < lastMs + BEDTIME_NUDGE_WINDOW_MS;
-  return reminding ? last : pastToday ? DateTime.add(bedtimeToday, { days: 1 }) : bedtimeToday;
 }
 
 const localNow = DateTime.withCurrentZoneLocal(DateTime.nowInCurrentZone);
@@ -175,27 +117,10 @@ const make = Effect.gen(function* () {
     yield* due.record(readVersion, dueAtMs, nowMs);
   });
 
-  const acknowledge = Effect.fn("BedtimeReminder.acknowledge")(function* (
-    input: BedtimeReminderAcknowledgeInput,
-  ) {
-    const action = input.action ?? "acknowledge";
-    let acknowledgedFor: string | null = null;
-    if (action !== "clear") {
-      const settings = yield* settingsService.getSettings;
-      const target = acknowledgeTarget(settings, yield* localNow);
-      acknowledgedFor = iso(target);
-    }
-    yield* settingsService.updateSettings({ bedtimeReminderAcknowledgedFor: acknowledgedFor });
-    yield* due.invalidate;
-    yield* sweep();
-    return yield* Ref.get(stateRef);
-  });
-
   yield* forkParked(Stream.runForEach(settingsService.streamChanges, () => due.invalidate));
   yield* scheduler.register("bedtime-reminder", sweep());
 
   return {
-    acknowledge,
     current: Ref.get(stateRef),
     get streamChanges() {
       return Stream.unwrap(
