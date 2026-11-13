@@ -11,21 +11,40 @@ pub struct Message {
     pub text: SharedString,
 }
 
-pub struct Thread {
-    pub title: SharedString,
-    pub messages: Vec<Message>,
-}
-
+#[derive(Debug, Clone)]
 pub struct Project {
+    pub id: SharedString,
     pub name: SharedString,
     pub path: SharedString,
     pub expanded: bool,
-    pub threads: Vec<Thread>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Thread {
+    pub id: SharedString,
+    pub project_id: SharedString,
+    pub title: SharedString,
+    pub status: SharedString,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnectionStatus {
+    Mock,
+    Connecting,
+    Connected,
+    Failed(SharedString),
+    Disconnected(SharedString),
 }
 
 pub struct AppState {
     pub projects: Vec<Project>,
-    pub selected: Option<(usize, usize)>,
+    pub threads: Vec<Thread>,
+    /// Selected thread id.
+    pub selected: Option<SharedString>,
+    /// Mock messages shown per thread while the client is offline or before
+    /// `orchestration.subscribeThread` lands.
+    pub messages: Vec<Message>,
+    pub connection: ConnectionStatus,
 }
 
 impl AppState {
@@ -33,62 +52,78 @@ impl AppState {
         Self {
             projects: vec![
                 Project {
+                    id: "p-67code".into(),
                     name: "67code".into(),
                     path: "~/Projects/67code".into(),
                     expanded: true,
-                    threads: vec![
-                        Thread {
-                            title: "Rewrite the app in Rust + GPUI".into(),
-                            messages: vec![
-                                Message {
-                                    role: Role::User,
-                                    text: "Rewrite the desktop app in Rust and GPUI.".into(),
-                                },
-                                Message {
-                                    role: Role::Agent,
-                                    text: "On it. Scaffolding a GPUI shell on the dev box, committing as I go.".into(),
-                                },
-                                Message {
-                                    role: Role::User,
-                                    text: "Make sure it renders on the box desktop.".into(),
-                                },
-                                Message {
-                                    role: Role::Agent,
-                                    text: "Verified: window opens on display :1 with the 67 Code shell.".into(),
-                                },
-                            ],
-                        },
-                        Thread {
-                            title: "Fix Electron scheme crash".into(),
-                            messages: vec![],
-                        },
-                        Thread {
-                            title: "Rebrand sweep".into(),
-                            messages: vec![],
-                        },
-                    ],
                 },
                 Project {
+                    id: "p-web".into(),
                     name: "web-playground".into(),
                     path: "~/Projects/web-playground".into(),
                     expanded: true,
-                    threads: vec![Thread {
-                        title: "Sandbox test".into(),
-                        messages: vec![],
-                    }],
                 },
             ],
-            selected: Some((0, 0)),
+            threads: vec![
+                Thread {
+                    id: "t-rust".into(),
+                    project_id: "p-67code".into(),
+                    title: "Rewrite the app in Rust + GPUI".into(),
+                    status: "idle".into(),
+                },
+                Thread {
+                    id: "t-scheme".into(),
+                    project_id: "p-67code".into(),
+                    title: "Fix Electron scheme crash".into(),
+                    status: "idle".into(),
+                },
+                Thread {
+                    id: "t-rebrand".into(),
+                    project_id: "p-67code".into(),
+                    title: "Rebrand sweep".into(),
+                    status: "idle".into(),
+                },
+                Thread {
+                    id: "t-sandbox".into(),
+                    project_id: "p-web".into(),
+                    title: "Sandbox test".into(),
+                    status: "idle".into(),
+                },
+            ],
+            selected: Some("t-rust".into()),
+            messages: vec![
+                Message {
+                    role: Role::User,
+                    text: "Rewrite the desktop app in Rust and GPUI.".into(),
+                },
+                Message {
+                    role: Role::Agent,
+                    text: "On it. Scaffolding a GPUI shell on the dev box, committing as I go."
+                        .into(),
+                },
+            ],
+            connection: ConnectionStatus::Mock,
         }
     }
 
-    pub fn selected_thread(&self) -> Option<&Thread> {
-        let (p, t) = self.selected?;
-        self.projects.get(p)?.threads.get(t)
+    pub fn connecting() -> Self {
+        Self {
+            projects: Vec::new(),
+            threads: Vec::new(),
+            selected: None,
+            messages: Vec::new(),
+            connection: ConnectionStatus::Connecting,
+        }
     }
 
-    pub fn selected_thread_mut(&mut self) -> Option<&mut Thread> {
-        let (p, t) = self.selected?;
-        self.projects.get_mut(p)?.threads.get_mut(t)
+    pub fn threads_for<'a>(&'a self, project_id: &'a str) -> impl Iterator<Item = &'a Thread> {
+        self.threads
+            .iter()
+            .filter(move |t| t.project_id.as_ref() == project_id)
+    }
+
+    pub fn selected_thread(&self) -> Option<&Thread> {
+        let id = self.selected.as_ref()?;
+        self.threads.iter().find(|t| &t.id == id)
     }
 }

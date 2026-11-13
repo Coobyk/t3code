@@ -1,18 +1,21 @@
 mod model;
+mod net;
 mod text_field;
 mod theme;
 
-use gpui::{AppContext, prelude::*,
-    App, Bounds, Context, Entity, IntoElement, KeyBinding, MouseButton, ParentElement, Render,
-    SharedString, Styled, Window, WindowBounds, WindowOptions, div, px, size,
+use gpui::{AppContext, prelude::*, rgb,
+    App, Bounds, Context, Entity, IntoElement, KeyBinding, MouseButton, Render,
+    SharedString, Window, WindowBounds, WindowOptions, div, px, size,
 };
 use gpui_platform::application;
-use model::{AppState, Role};
+use model::{AppState, ConnectionStatus, Role};
+use net::{ClientCommand, ServerEndpoint, ShellEvent};
 use text_field::{PromptSubmitted, TextField};
 
 struct AppView {
     state: AppState,
     composer: Entity<TextField>,
+    commands: Option<std::sync::mpsc::Sender<ClientCommand>>,
 }
 
 impl AppView {
@@ -26,29 +29,141 @@ impl AppView {
             },
         )
         .detach();
+
+        let mut commands = None;
+        let state = match ServerEndpoint::from_env() {
+            Some(endpoint) => {
+                let (events_tx, events_rx) = smol::channel::unbounded::<ShellEvent>();
+                let (commands_tx, commands_rx) = std::sync::mpsc::channel::<ClientCommand>();
+                std::thread::spawn(move || net::run(endpoint, events_tx, commands_rx));
+                commands = Some(commands_tx);
+
+                cx.spawn(async move |this, cx| {
+                    while let Ok(event) = events_rx.recv().await {
+                        let alive = this.update(cx, |this, cx| {
+                            this.apply_shell_event(event, cx);
+                        });
+                        if alive.is_err() {
+                            break;
+                        }
+                    }
+                })
+                .detach();
+
+                AppState::connecting()
+            }
+            None => AppState::mock(),
+        };
+
         Self {
-            state: AppState::mock(),
+            state,
             composer,
+            commands,
         }
     }
 
-    fn on_prompt_submitted(&mut self, text: &SharedString, cx: &mut Context<Self>) {
-        let Some(thread) = self.state.selected_thread_mut() else {
-            return;
-        };
-        thread.messages.push(model::Message {
-            role: Role::User,
-            text: text.clone(),
-        });
-        thread.messages.push(model::Message {
-            role: Role::Agent,
-            text: "Received — the Rust client is not wired to a 67 server yet.".into(),
-        });
+    fn apply_shell_event(&mut self, event: ShellEvent, cx: &mut Context<Self>) {
+        match event {
+            ShellEvent::Connected => {
+                self.state.connection = ConnectionStatus::Connected;
+            }
+            ShellEvent::Snapshot(snapshot) => {
+                self.state.projects = snapshot
+                    .projects
+                    .into_iter()
+                    .map(|p| model::Project {
+                        id: p.id.into(),
+                        name: p.title.into(),
+                        path: p.workspace_root.into(),
+                        expanded: true,
+                    })
+                    .collect();
+                self.state.threads = snapshot
+                    .threads
+                    .into_iter()
+                    .filter(|t| !t.deleted && !t.archived)
+                    .map(|t| model::Thread {
+                        id: t.id.into(),
+                        project_id: t.project_id.into(),
+                        title: t.title.into(),
+                        status: t.status.into(),
+                    })
+                    .collect();
+                if self.state.selected.is_none() {
+                    self.state.selected =
+                        self.state.threads.first().map(|t| t.id.clone());
+                }
+            }
+            ShellEvent::ProjectUpserted(p) => {
+                let project = model::Project {
+                    id: p.id.clone().into(),
+                    name: p.title.into(),
+                    path: p.workspace_root.into(),
+                    expanded: true,
+                };
+                match self.state.projects.iter().position(|e| e.id.as_ref() == p.id) {
+                    Some(i) => self.state.projects[i] = project,
+                    None => self.state.projects.push(project),
+                }
+            }
+            ShellEvent::ProjectRemoved { project_id } => {
+                self.state.projects.retain(|p| p.id.as_ref() != project_id);
+            }
+            ShellEvent::ThreadUpserted { thread } => {
+                if thread.deleted || thread.archived {
+                    self.state.threads.retain(|t| t.id.as_ref() != thread.id);
+                } else {
+                    let entry = model::Thread {
+                        id: thread.id.clone().into(),
+                        project_id: thread.project_id.into(),
+                        title: thread.title.into(),
+                        status: thread.status.into(),
+                    };
+                    match self.state.threads.iter().position(|e| e.id.as_ref() == thread.id) {
+                        Some(i) => self.state.threads[i] = entry,
+                        None => self.state.threads.push(entry),
+                    }
+                }
+            }
+            ShellEvent::ThreadRemoved { thread_id, .. } => {
+                self.state.threads.retain(|t| t.id.as_ref() != thread_id);
+            }
+            ShellEvent::Error(e) => {
+                self.state.connection = ConnectionStatus::Failed(e.into());
+            }
+            ShellEvent::Disconnected(reason) => {
+                self.state.connection = ConnectionStatus::Disconnected(reason.into());
+            }
+        }
         cx.notify();
     }
 
-    fn select_thread(&mut self, project: usize, thread: usize, cx: &mut Context<Self>) {
-        self.state.selected = Some((project, thread));
+    fn on_prompt_submitted(&mut self, text: &SharedString, cx: &mut Context<Self>) {
+        self.state.messages.push(model::Message {
+            role: Role::User,
+            text: text.clone(),
+        });
+        if self.state.connection == ConnectionStatus::Connected {
+            self.state.messages.push(model::Message {
+                role: Role::Agent,
+                text: "Connected to the 67 server — thread launch is not wired yet.".into(),
+            });
+        } else {
+            self.state.messages.push(model::Message {
+                role: Role::Agent,
+                text: "Received — the Rust client is not wired to a 67 server yet.".into(),
+            });
+        }
+        cx.notify();
+    }
+
+    fn select_thread(&mut self, thread_id: SharedString, cx: &mut Context<Self>) {
+        if let Some(commands) = &self.commands {
+            let _ = commands.send(ClientCommand::SubscribeThread {
+                thread_id: thread_id.to_string(),
+            });
+        }
+        self.state.selected = Some(thread_id);
         cx.notify();
     }
 
@@ -79,33 +194,55 @@ impl AppView {
                         .child(project.path.clone()),
                 );
             if project.expanded {
-                for (ti, thread) in project.threads.iter().enumerate() {
-                    let active = self.state.selected == Some((pi, ti));
-                    section = section.child(
-                        div()
-                            .id(("thread", pi * 1000 + ti))
-                            .mx_1()
-                            .px_2()
-                            .py_1()
-                            .rounded_md()
-                            .text_sm()
-                            .when(active, |s| s.bg(theme::selected()).text_color(theme::fg()))
-                            .when(!active, |s| {
-                                s.text_color(theme::fg_muted())
-                                    .hover(|s| s.bg(theme::hover()))
-                            })
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |this, _ev, _window, cx| {
-                                    this.select_thread(pi, ti, cx)
-                                }),
-                            )
-                            .child(thread.title.clone()),
-                    );
+                for (ti, thread) in self.state.threads_for(&project.id).enumerate() {
+                    let active = self.state.selected.as_ref() == Some(&thread.id);
+                    let thread_id = thread.id.clone();
+                    let mut row = div()
+                        .id(("thread", pi * 10_000 + ti))
+                        .mx_1()
+                        .px_2()
+                        .py_1()
+                        .rounded_md()
+                        .text_sm()
+                        .when(active, |s| s.bg(theme::selected()).text_color(theme::fg()))
+                        .when(!active, |s| {
+                            s.text_color(theme::fg_muted())
+                                .hover(|s| s.bg(theme::hover()))
+                        })
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, _ev, _window, cx| {
+                                this.select_thread(thread_id.clone(), cx)
+                            }),
+                        )
+                        .child(thread.title.clone());
+                    if thread.status.as_ref() != "idle" {
+                        row = row.child(
+                            div()
+                                .ml_1()
+                                .text_xs()
+                                .text_color(theme::primary())
+                                .child(format!("({})", thread.status)),
+                        );
+                    }
+                    section = section.child(row);
                 }
             }
             projects = projects.child(section);
         }
+
+        let status_text = match &self.state.connection {
+            ConnectionStatus::Mock => "Local mock data".to_string(),
+            ConnectionStatus::Connecting => "Connecting…".to_string(),
+            ConnectionStatus::Connected => "Connected".to_string(),
+            ConnectionStatus::Failed(e) => format!("Error: {e}"),
+            ConnectionStatus::Disconnected(e) => format!("Disconnected: {e}"),
+        };
+        let status_color = match &self.state.connection {
+            ConnectionStatus::Connected => theme::primary(),
+            ConnectionStatus::Failed(_) | ConnectionStatus::Disconnected(_) => rgb(0xff5a5a),
+            _ => theme::fg_muted(),
+        };
 
         div()
             .w(px(260.))
@@ -139,8 +276,8 @@ impl AppView {
                     .border_t_1()
                     .border_color(theme::border())
                     .text_xs()
-                    .text_color(theme::fg_muted())
-                    .child("Local · not connected"),
+                    .text_color(status_color)
+                    .child(status_text),
             )
     }
 
@@ -154,43 +291,40 @@ impl AppView {
             .p_4()
             .gap_3();
 
-        match self.state.selected_thread() {
-            Some(thread) if !thread.messages.is_empty() => {
-                for (i, message) in thread.messages.iter().enumerate() {
-                    let bubble = div()
-                        .px_3()
-                        .py_2()
-                        .rounded_lg()
-                        .text_sm()
-                        .max_w(px(560.))
-                        .child(message.text.clone());
-                    let row = match message.role {
-                        Role::User => div().flex().justify_end().child(
-                            bubble.bg(theme::user_bubble()).text_color(theme::fg()),
-                        ),
-                        Role::Agent => div().flex().justify_start().child(
-                            bubble
-                                .bg(theme::raised())
-                                .border_1()
-                                .border_color(theme::border())
-                                .text_color(theme::fg()),
-                        ),
-                    };
-                    list = list.child(div().id(("msg", i)).child(row));
-                }
-            }
-            _ => {
-                list = list.child(
-                    div()
-                        .flex_1()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .text_color(theme::fg_muted())
-                        .text_sm()
-                        .child("No messages yet — say something to the agent."),
-                );
-            }
+        if self.state.messages.is_empty() {
+            return list.child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_color(theme::fg_muted())
+                    .text_sm()
+                    .child("No messages yet — say something to the agent."),
+            );
+        }
+
+        for (i, message) in self.state.messages.iter().enumerate() {
+            let bubble = div()
+                .px_3()
+                .py_2()
+                .rounded_lg()
+                .text_sm()
+                .max_w(px(560.))
+                .child(message.text.clone());
+            let row = match message.role {
+                Role::User => div().flex().justify_end().child(
+                    bubble.bg(theme::user_bubble()).text_color(theme::fg()),
+                ),
+                Role::Agent => div().flex().justify_start().child(
+                    bubble
+                        .bg(theme::raised())
+                        .border_1()
+                        .border_color(theme::border())
+                        .text_color(theme::fg()),
+                ),
+            };
+            list = list.child(div().id(("msg", i)).child(row));
         }
         list
     }
