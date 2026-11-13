@@ -3,7 +3,7 @@ mod net;
 mod text_field;
 mod theme;
 
-use gpui::{AppContext, prelude::*, rgb,
+use gpui::{AppContext, Focusable, prelude::*, rgb,
     App, Bounds, Context, Entity, IntoElement, KeyBinding, MouseButton, Render,
     SharedString, Window, WindowBounds, WindowOptions, div, px, size,
 };
@@ -21,6 +21,7 @@ struct AppView {
 impl AppView {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let composer = cx.new(|cx| TextField::new("Message the agent…", cx));
+        composer.read(cx).focus_handle(cx).focus(window, cx);
         cx.subscribe_in(
             &composer,
             window,
@@ -143,11 +144,55 @@ impl AppView {
             role: Role::User,
             text: text.clone(),
         });
+
         if self.state.connection == ConnectionStatus::Connected {
-            self.state.messages.push(model::Message {
-                role: Role::Agent,
-                text: "Connected to the 67 server — thread launch is not wired yet.".into(),
-            });
+            let thread_id = match self.state.selected_thread() {
+                Some(thread) => thread.id.to_string(),
+                None => {
+                    // No thread selected: create one under the first project.
+                    let Some(project) = self.state.projects.first() else {
+                        self.state.messages.push(model::Message {
+                            role: Role::Agent,
+                            text: "No project on this server to create a thread in.".into(),
+                        });
+                        cx.notify();
+                        return;
+                    };
+                    let thread_id = uuid::Uuid::new_v4().to_string();
+                    self.dispatch(
+                        serde_json::json!({
+                            "type": "thread.create",
+                            "commandId": uuid::Uuid::new_v4().to_string(),
+                            "threadId": thread_id,
+                            "projectId": project.id.to_string(),
+                            "title": text.chars().take(60).collect::<String>(),
+                            "modelSelection": { "instanceId": "devReplay", "model": "showcase" },
+                            "runtimeMode": "full-access",
+                            "interactionMode": "default",
+                            "branch": null,
+                            "worktreePath": null,
+                            "createdBy": "user",
+                            "creationSource": "web",
+                        }),
+                    );
+                    self.state.selected = Some(thread_id.clone().into());
+                    thread_id
+                }
+            };
+
+            self.dispatch(
+                serde_json::json!({
+                    "type": "message.dispatch",
+                    "commandId": uuid::Uuid::new_v4().to_string(),
+                    "threadId": thread_id,
+                    "messageId": uuid::Uuid::new_v4().to_string(),
+                    "text": text.to_string(),
+                    "attachments": [],
+                    "dispatchMode": { "type": "start_immediately" },
+                    "createdBy": "user",
+                    "creationSource": "web",
+                }),
+            );
         } else {
             self.state.messages.push(model::Message {
                 role: Role::Agent,
@@ -155,6 +200,12 @@ impl AppView {
             });
         }
         cx.notify();
+    }
+
+    fn dispatch(&mut self, command: serde_json::Value) {
+        if let Some(commands) = &self.commands {
+            let _ = commands.send(ClientCommand::Dispatch { command });
+        }
     }
 
     fn select_thread(&mut self, thread_id: SharedString, cx: &mut Context<Self>) {

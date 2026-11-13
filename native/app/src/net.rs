@@ -78,6 +78,8 @@ pub enum ShellEvent {
 pub enum ClientCommand {
     SubscribeShell,
     SubscribeThread { thread_id: String },
+    /// A raw `OrchestrationV2Command` JSON payload.
+    Dispatch { command: Value },
     #[allow(dead_code)]
     Interrupt { request_id: u64 },
 }
@@ -235,6 +237,13 @@ fn send_command(
             "id": id,
             "tag": "orchestration.subscribeThread",
             "payload": { "threadId": thread_id, "requestCompletionMarker": true },
+            "headers": [],
+        }),
+        ClientCommand::Dispatch { command } => json!({
+            "_tag": "Request",
+            "id": id,
+            "tag": "orchestration.dispatchCommand",
+            "payload": command,
             "headers": [],
         }),
         ClientCommand::Interrupt { request_id } => json!({

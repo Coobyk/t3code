@@ -675,6 +675,7 @@ dependencies = [
  "tungstenite",
  "unicode-segmentation",
  "ureq",
+ "uuid",
 ]
 
 [[package]]
