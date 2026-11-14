@@ -9,6 +9,7 @@ use crate::store::RunContext;
 use crate::AppState;
 
 pub mod codex;
+pub mod devin;
 pub mod replay;
 
 /// Begin the provider turn for a freshly created run. Registers a cancellation
@@ -28,7 +29,10 @@ pub fn spawn_turn(state: Arc<AppState>, ctx: RunContext) {
     tokio::spawn(async move {
         let result = match ctx.provider_instance_id.as_str() {
             "devReplay" | "replay" => replay::run(&st, &ctx, &cancel).await,
-            _ => codex::run(&st, &ctx, &cancel).await,
+            "codex" => codex::run(&st, &ctx, &cancel).await,
+            // "devin"/"devin-acp" and any unregistered instance route to the
+            // devin ACP provider for now.
+            _ => devin::run(&st, &ctx, &cancel).await,
         };
         if let Err(e) = result {
             tracing::warn!(thread = %ctx.thread_id, %e, "provider turn failed");

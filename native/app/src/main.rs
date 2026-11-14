@@ -218,7 +218,12 @@ impl AppView {
                             "threadId": thread_id,
                             "projectId": project.id.to_string(),
                             "title": text.chars().take(60).collect::<String>(),
-                            "modelSelection": { "instanceId": "devReplay", "model": "showcase" },
+                            "modelSelection": {
+                                "instanceId": std::env::var("C67_PROVIDER")
+                                    .unwrap_or_else(|_| "devReplay".to_string()),
+                                "model": std::env::var("C67_MODEL")
+                                    .unwrap_or_else(|_| "showcase".to_string()),
+                            },
                             "runtimeMode": "full-access",
                             "interactionMode": "default",
                             "branch": null,

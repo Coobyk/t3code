@@ -14,23 +14,40 @@ use crate::AppState;
 
 const DRIVER: &str = "acpRegistry";
 
-struct Turn {
-    ctx: RunContext,
-    next_ordinal: i64,
+pub(crate) struct Turn {
+    pub ctx: RunContext,
+    pub driver: &'static str,
+    pub next_ordinal: i64,
     /// item_id -> ordinal (allocated at creation, reused on updates).
-    item_ordinals: HashMap<String, i64>,
-    reasoning_item: Option<String>,
-    assistant_item: Option<String>,
-    assistant_message_id: Option<String>,
-    assistant_text: String,
-    reasoning_text: String,
-    plan_id: Option<String>,
+    pub item_ordinals: HashMap<String, i64>,
+    pub reasoning_item: Option<String>,
+    pub assistant_item: Option<String>,
+    pub assistant_message_id: Option<String>,
+    pub assistant_text: String,
+    pub reasoning_text: String,
+    pub plan_id: Option<String>,
     /// toolCallId -> (itemId, nodeId).
-    tool_items: HashMap<String, (String, String)>,
+    pub tool_items: HashMap<String, (String, String)>,
 }
 
 impl Turn {
-    fn base_item(&mut self, node_id: &str, ty: &str) -> Map<String, Value> {
+    pub(crate) fn new(ctx: RunContext, driver: &'static str, start_ordinal: i64) -> Self {
+        Self {
+            ctx,
+            driver,
+            next_ordinal: start_ordinal,
+            item_ordinals: HashMap::new(),
+            reasoning_item: None,
+            assistant_item: None,
+            assistant_message_id: None,
+            assistant_text: String::new(),
+            reasoning_text: String::new(),
+            plan_id: None,
+            tool_items: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn base_item(&mut self, node_id: &str, ty: &str) -> Map<String, Value> {
         let now = domain::now_iso();
         let id = domain::new_id();
         let ordinal = self.next_ordinal;
@@ -55,7 +72,7 @@ impl Turn {
         o
     }
 
-    fn refresh_item(&self, item: &mut Value) {
+    pub(crate) fn refresh_item(&self, item: &mut Value) {
         let now = domain::now_iso();
         if let Some(id) = item.get("id").and_then(Value::as_str) {
             if let Some(&ord) = self.item_ordinals.get(id) {
@@ -65,7 +82,7 @@ impl Turn {
         item["updatedAt"] = json!(now);
     }
 
-    async fn commit(&self, state: &AppState, events: Vec<Value>) -> anyhow::Result<()> {
+    pub(crate) async fn commit(&self, state: &AppState, events: Vec<Value>) -> anyhow::Result<()> {
         let committed = state
             .store
             .commit_events(&self.ctx.thread_id, None, events)
@@ -77,20 +94,20 @@ impl Turn {
         Ok(())
     }
 
-    fn ev(&self, ty: &str, payload: Value, node_id: Option<&str>) -> Value {
+    pub(crate) fn ev(&self, ty: &str, payload: Value, node_id: Option<&str>) -> Value {
         domain::thread_event(
             &self.ctx.thread_id,
             ty,
             payload,
             Some(&self.ctx.run_id),
             node_id,
-            Some(DRIVER),
+            Some(self.driver),
             Some(&self.ctx.provider_instance_id),
             Some(&domain::new_id()),
         )
     }
 
-    fn tool_node(&self, node_id: &str, tool_call_id: &str, status: &str, done_at: Option<&str>) -> Value {
+    pub(crate) fn tool_node(&self, node_id: &str, tool_call_id: &str, status: &str, done_at: Option<&str>) -> Value {
         json!({
             "id": node_id,
             "threadId": self.ctx.thread_id,
@@ -102,7 +119,7 @@ impl Turn {
             "countsForRun": true,
             "providerThreadId": self.ctx.provider_thread_id,
             "providerTurnId": self.ctx.provider_turn_id,
-            "nativeItemRef": { "driver": DRIVER, "nativeId": tool_call_id, "strength": "strong" },
+            "nativeItemRef": { "driver": self.driver, "nativeId": tool_call_id, "strength": "strong" },
             "runtimeRequestId": null,
             "checkpointScopeId": null,
             "startedAt": done_at.map(|_| Value::Null).unwrap_or(json!(domain::now_iso())),
@@ -136,18 +153,7 @@ pub async fn run(
         })
         .unwrap_or(0);
 
-    let mut turn = Turn {
-        ctx: ctx.clone(),
-        next_ordinal: start_ordinal,
-        item_ordinals: HashMap::new(),
-        reasoning_item: None,
-        assistant_item: None,
-        assistant_message_id: None,
-        assistant_text: String::new(),
-        reasoning_text: String::new(),
-        plan_id: None,
-        tool_items: HashMap::new(),
-    };
+    let mut turn = Turn::new(ctx.clone(), DRIVER, start_ordinal);
 
     for line in transcript.lines() {
         if cancel.is_cancelled() {
@@ -188,7 +194,7 @@ pub async fn run(
     finish_turn(state, &mut turn, "completed").await
 }
 
-async fn handle_session_update(
+pub(crate) async fn handle_session_update(
     state: &Arc<AppState>,
     turn: &mut Turn,
     update: &Value,
@@ -350,7 +356,7 @@ async fn handle_session_update(
             item.insert("title".into(), json!(title));
             item.insert(
                 "nativeItemRef".into(),
-                json!({ "driver": DRIVER, "nativeId": tool_call_id, "strength": "strong" }),
+                json!({ "driver": turn.driver, "nativeId": tool_call_id, "strength": "strong" }),
             );
             match tool_kind {
                 "execute" | "terminal" => {
@@ -480,7 +486,7 @@ async fn handle_session_update(
     Ok(())
 }
 
-async fn find_plan_item(state: &Arc<AppState>, turn: &Turn, plan_id: &str) -> Option<Value> {
+pub(crate) async fn find_plan_item(state: &Arc<AppState>, turn: &Turn, plan_id: &str) -> Option<Value> {
     let projection = state.store.thread_projection(&turn.ctx.thread_id).await?;
     projection
         .get("turnItems")
@@ -501,7 +507,7 @@ async fn find_plan_item(state: &Arc<AppState>, turn: &Turn, plan_id: &str) -> Op
         })
 }
 
-fn map_acp_status(s: Option<&str>) -> &'static str {
+pub(crate) fn map_acp_status(s: Option<&str>) -> &'static str {
     match s.unwrap_or("pending") {
         "in_progress" => "running",
         "completed" => "completed",
@@ -511,7 +517,7 @@ fn map_acp_status(s: Option<&str>) -> &'static str {
     }
 }
 
-async fn handle_permission(
+pub(crate) async fn handle_permission(
     state: &Arc<AppState>,
     turn: &mut Turn,
     frame: &Value,
@@ -576,12 +582,13 @@ async fn handle_permission(
         "completedAt": null,
     });
     let provider_turn_id = turn.ctx.provider_turn_id.clone();
+    let driver = turn.driver;
     let request_payload = |status: &str, resolved_at: Value, decision: Value| {
         json!({
             "id": request_id,
             "nodeId": node_id,
             "providerTurnId": provider_turn_id.clone(),
-            "nativeRequestRef": { "driver": DRIVER, "nativeId": tool_call_id, "strength": "weak" },
+            "nativeRequestRef": { "driver": driver, "nativeId": tool_call_id, "strength": "weak" },
             "kind": request_kind,
             "status": status,
             "responseCapability": { "type": "not_resumable", "reason": "devReplay auto-answers" },
@@ -634,7 +641,7 @@ async fn handle_permission(
 }
 
 /// Close streaming items and mark run/attempt/root node/provider turn done.
-async fn finish_turn(state: &AppState, turn: &mut Turn, status: &str) -> anyhow::Result<()> {
+pub(crate) async fn finish_turn(state: &AppState, turn: &mut Turn, status: &str) -> anyhow::Result<()> {
     let now = domain::now_iso();
     let mut events: Vec<Value> = vec![];
     let ctx = &turn.ctx;
@@ -753,7 +760,7 @@ async fn finish_turn(state: &AppState, turn: &mut Turn, status: &str) -> anyhow:
         });
     let provider_thread = json!({
         "id": ctx.provider_thread_id,
-        "driver": DRIVER,
+        "driver": turn.driver,
         "providerInstanceId": ctx.provider_instance_id,
         "providerSessionId": null,
         "appThreadId": ctx.thread_id,

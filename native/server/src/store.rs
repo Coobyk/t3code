@@ -2207,6 +2207,7 @@ fn provider_driver(instance_id: &str) -> &'static str {
         "cursor" | "cursorAgent" => "cursor",
         "opencode" => "opencode",
         "devReplay" | "replay" => "acpRegistry",
+        "devin" | "devin-acp" => "devin",
         _ => "acpRegistry",
     }
 }
