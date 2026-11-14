@@ -10,7 +10,7 @@ import { useManagedPolicy } from "../state/managedPolicy";
 import { useEnvironmentScope } from "../state/session";
 import { useCloudLinkState } from "./cloudLinkState";
 import { hasCloudPublicConfig } from "./publicConfig";
-import { resolveT3ConnectTurnOn } from "./t3ConnectState";
+import { resolveT3ConnectTurnOn } from "./c67ConnectState";
 
 /** Whether this client can turn on T3 Connect for `environmentId`, and if not, why. */
 export function useT3ConnectTurnOn(environmentId: EnvironmentId | null) {

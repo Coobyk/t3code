@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { T3Wordmark } from "../T3Wordmark";
+import { T3Wordmark } from "../C67Wordmark";
 
 export function StandalonePage({ children }: { readonly children: ReactNode }) {
   return (

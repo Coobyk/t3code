@@ -1,6 +1,6 @@
 import { expect } from "e2e";
 
-import { test, WEB } from "./t3.ts";
+import { test, WEB } from "./67.ts";
 
 test(
   "A replayed turn streams a reply, shows its tool calls, and finishes",

@@ -9,7 +9,7 @@ import { useEnvironmentSettings } from "../hooks/useSettings";
 import { cn } from "../lib/utils";
 import { useEnvironmentQuery } from "../state/query";
 import { sourceControlEnvironment } from "../state/sourceControl";
-import { T3AppIcon } from "./T3AppIcon";
+import { T3AppIcon } from "./C67AppIcon";
 import { InlineButton } from "./ui/button";
 
 /**

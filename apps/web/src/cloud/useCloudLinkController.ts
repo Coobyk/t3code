@@ -26,7 +26,7 @@ import {
 } from "./linkEnvironmentAtoms";
 import { readCachedCloudLinkState, useCloudLinkState } from "./cloudLinkState";
 import { resolveRelayClerkTokenOptions } from "./publicConfig";
-import { isManagedTunnelActive } from "./t3ConnectState";
+import { isManagedTunnelActive } from "./c67ConnectState";
 
 export interface CloudLinkDesiredState {
   readonly managedTunnel: boolean;

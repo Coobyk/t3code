@@ -37,7 +37,7 @@ import {
   type ComposerNativeEventSnapshot,
 } from "./composerEditorRevision";
 import { DEFAULT_COMPOSER_ENTER_BEHAVIOR } from "../lib/composerEnterBehavior";
-import type { ComposerEditorProps, ComposerEditorSelection } from "./T3ComposerEditor.types";
+import type { ComposerEditorProps, ComposerEditorSelection } from "./C67ComposerEditor.types";
 
 const NATIVE_MODULE_NAME = "T3ComposerEditor";
 const EMPTY_SKILLS: NonNullable<ComposerEditorProps["skills"]> = [];
@@ -431,4 +431,4 @@ export type {
   ComposerEditorProps,
   ComposerEditorSelection,
   ComposerTextPaste,
-} from "./T3ComposerEditor.types";
+} from "./C67ComposerEditor.types";

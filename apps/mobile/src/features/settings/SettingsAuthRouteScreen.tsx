@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
-import { T3ConnectProfilePage } from "../cloud/T3ConnectProfilePage";
+import { T3ConnectProfilePage } from "../cloud/C67ConnectProfilePage";
 
 const USER_PROFILE_CUSTOM_PAGES = [
   {

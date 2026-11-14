@@ -40,7 +40,7 @@ import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.t
 import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
-import * as T3ProjectFileLoader from "../project/T3ProjectFileLoader.ts";
+import * as T3ProjectFileLoader from "../project/C67ProjectFileLoader.ts";
 import {
   makePersistedServerRuntimeState,
   persistServerRuntimeState,

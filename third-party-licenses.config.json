@@ -156,7 +156,7 @@
       "bundles": ["mobile"],
       "license": "MIT",
       "name": "react-native-uitextview",
-      "noticeFile": "apps/mobile/modules/t3-source-text/LICENSE",
+      "noticeFile": "apps/mobile/modules/67-source-text/LICENSE",
       "sourceUrl": "https://github.com/bluesky-social/react-native-uitextview",
       "version": "2.2.0"
     },
@@ -164,7 +164,7 @@
       "bundles": ["mobile"],
       "license": "MIT",
       "name": "Expo text editor implementation",
-      "noticeFile": "apps/mobile/modules/t3-composer-editor/LICENSE",
+      "noticeFile": "apps/mobile/modules/67-composer-editor/LICENSE",
       "sourceUrl": "https://github.com/expo/expo"
     },
     {
@@ -172,7 +172,7 @@
       "license": "Apache-2.0",
       "name": "wasm2c runtime (WABT)",
       "version": "1.0.42",
-      "noticeFile": "apps/mobile/modules/t3-highlights/Vendor/wasm2c/LICENSE",
+      "noticeFile": "apps/mobile/modules/67-highlights/Vendor/wasm2c/LICENSE",
       "sourceUrl": "https://github.com/WebAssembly/wabt/tree/1.0.42/wasm2c"
     },
     {
@@ -180,7 +180,7 @@
       "license": "MIT",
       "name": "SIMD Everywhere",
       "version": "0.8.2",
-      "noticeFile": "apps/mobile/modules/t3-highlights/Vendor/simde/LICENSE",
+      "noticeFile": "apps/mobile/modules/67-highlights/Vendor/simde/LICENSE",
       "sourceUrl": "https://github.com/simd-everywhere/simde/tree/v0.8.2"
     },
     {
@@ -608,11 +608,11 @@
     },
     {
       "name": "@expo/sdk-runtime-versions",
-      "noticeFile": "apps/mobile/modules/t3-composer-editor/LICENSE"
+      "noticeFile": "apps/mobile/modules/67-composer-editor/LICENSE"
     },
     {
       "name": "@expo/ws-tunnel",
-      "noticeFile": "apps/mobile/modules/t3-composer-editor/LICENSE"
+      "noticeFile": "apps/mobile/modules/67-composer-editor/LICENSE"
     },
     {
       "name": "stream-buffers",

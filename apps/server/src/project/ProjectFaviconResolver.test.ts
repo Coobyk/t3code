@@ -8,7 +8,7 @@ import { TestClock } from "effect/testing";
 
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as ProjectFaviconResolver from "./ProjectFaviconResolver.ts";
-import * as T3ProjectFileLoader from "./T3ProjectFileLoader.ts";
+import * as T3ProjectFileLoader from "./C67ProjectFileLoader.ts";
 
 const layerTest = Layer.empty.pipe(
   Layer.provideMerge(

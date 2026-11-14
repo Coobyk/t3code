@@ -5,7 +5,7 @@ import type {
 import type { Discovery } from "@t3tools/client-runtime/relay";
 import type { RelayManagedEndpoint } from "@t3tools/contracts/relay";
 
-import { isManagedTunnelActive, t3ConnectMcpUrl } from "~/cloud/t3ConnectState";
+import { isManagedTunnelActive, t3ConnectMcpUrl } from "~/cloud/c67ConnectState";
 
 type Unreachable = Extract<EnvironmentConnectReachability, { readonly status: "unreachable" }>;
 

@@ -63,7 +63,7 @@ import { cn } from "~/lib/utils";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
 import { subagentResumedSince } from "./V2LifecycleRow.logic";
 import { Button, InlineButton } from "../ui/button";
-import { T3Wordmark } from "../T3Wordmark";
+import { T3Wordmark } from "../C67Wordmark";
 
 export type { HandoffTimelineRun } from "@t3tools/client-runtime/handoff";
 

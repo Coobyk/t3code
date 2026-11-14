@@ -6,7 +6,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
-import * as T3ProjectFileLoader from "./T3ProjectFileLoader.ts";
+import * as T3ProjectFileLoader from "./C67ProjectFileLoader.ts";
 
 const layerTest = Layer.empty.pipe(
   Layer.provideMerge(T3ProjectFileLoader.layer),

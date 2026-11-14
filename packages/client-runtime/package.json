@@ -144,8 +144,8 @@
       "default": "./src/voice-input/index.ts"
     },
     "./t3ToolSummary": {
-      "types": "./src/t3ToolSummary.ts",
-      "default": "./src/t3ToolSummary.ts"
+      "types": "./src/c67ToolSummary.ts",
+      "default": "./src/c67ToolSummary.ts"
     },
     "./relay": {
       "types": "./src/relay/index.ts",

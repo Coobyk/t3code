@@ -29,7 +29,7 @@ import { environmentSession, readEnvironmentScope, useEnvironmentScope } from "~
 import {
   type T3ConnectAccountPageUrl,
   useT3ConnectAccountPage,
-} from "../clerk/T3ConnectAccountPages";
+} from "../clerk/C67ConnectAccountPages";
 import { CloudEnvironmentConnectRows } from "./CloudEnvironmentConnectList";
 import { TunnelLimitAlert } from "./TunnelUsage";
 import { Button } from "../ui/button";

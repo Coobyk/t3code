@@ -17,7 +17,7 @@ const WASM2C_VERSION = "1.0.42";
 const THEMES = { light: "pierre-light", dark: "pierre-dark" } as const;
 
 const mobileRoot = NodePath.resolve(import.meta.dirname, "..");
-const moduleRoot = NodePath.join(mobileRoot, "modules/t3-highlights");
+const moduleRoot = NodePath.join(mobileRoot, "modules/67-highlights");
 const generatedDataPath = NodePath.join(mobileRoot, "src/lib/highlights.generated.ts");
 
 interface ThemeStyle {

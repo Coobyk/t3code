@@ -67,7 +67,7 @@ vi.mock(import("@clerk/react"), async (original) => ({
   ...(await original()),
   useAuth: (() => state.auth) as never,
 }));
-vi.mock(import("../clerk/useT3ConnectAuthPrompt"), async (original) => ({
+vi.mock(import("../clerk/use67ConnectAuthPrompt"), async (original) => ({
   ...(await original()),
   useT3ConnectAuthPrompt: (() => ({ openAuthPrompt: () => {} })) as never,
 }));

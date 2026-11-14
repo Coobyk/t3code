@@ -9,7 +9,7 @@ import * as Cause from "effect/Cause";
 import { CheckIcon, ExternalLinkIcon, CopyIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { T3AppIcon } from "~/components/T3AppIcon";
+import { T3AppIcon } from "~/components/C67AppIcon";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";

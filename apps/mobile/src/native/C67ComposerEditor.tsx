@@ -5,7 +5,7 @@ import { TextInput, type TextInputInstance } from "react-native";
 import { FONT_FAMILIES } from "../lib/fontFamilies";
 import { useScaledTextRole } from "../features/settings/appearance/useScaledTextRole";
 import { useNativePaste } from "../lib/useNativePaste";
-import type { ComposerEditorProps } from "./T3ComposerEditor.types";
+import type { ComposerEditorProps } from "./C67ComposerEditor.types";
 
 export function ComposerEditor({
   ref,
@@ -72,4 +72,4 @@ export type {
   ComposerEditorProps,
   ComposerEditorSelection,
   ComposerTextPaste,
-} from "./T3ComposerEditor.types";
+} from "./C67ComposerEditor.types";

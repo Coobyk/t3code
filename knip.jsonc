@@ -127,11 +127,11 @@
         "@t3tools/mobile-terminal-native",
       ],
     },
-    "apps/mobile/modules/t3-highlights": {
+    "apps/mobile/modules/67-highlights": {
       // Nitrogen discovers HybridObject specifications by filename.
       "entry": ["src/*.nitro.ts!"],
     },
-    "apps/mobile/modules/t3-source-text": {
+    "apps/mobile/modules/67-source-text": {
       // React Native codegen discovers component specifications by filename.
       "entry": ["src/*NativeComponent.ts!"],
     },

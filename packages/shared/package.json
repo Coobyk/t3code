@@ -172,8 +172,8 @@
       "import": "./src/projectSettings.ts"
     },
     "./t3ProjectFile": {
-      "types": "./src/t3ProjectFile.ts",
-      "import": "./src/t3ProjectFile.ts"
+      "types": "./src/c67ProjectFile.ts",
+      "import": "./src/c67ProjectFile.ts"
     },
     "./orchestrationTiming": {
       "types": "./src/orchestrationTiming.ts",
@@ -420,8 +420,8 @@
       "import": "./src/orchestrationV2Timeline.ts"
     },
     "./t3McpToolPresentation": {
-      "types": "./src/t3McpToolPresentation.ts",
-      "import": "./src/t3McpToolPresentation.ts"
+      "types": "./src/c67McpToolPresentation.ts",
+      "import": "./src/c67McpToolPresentation.ts"
     },
     "./Array": {
       "types": "./src/Array.ts",

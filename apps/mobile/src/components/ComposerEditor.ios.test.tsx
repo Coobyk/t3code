@@ -101,7 +101,7 @@ function emit(value: string, resetGeneration = native.resetGeneration) {
 
 vi.mock("expo", () => ({ requireNativeView: () => NativeView }));
 // Vite resolves the platform-neutral module; the race lives in the iOS editor.
-vi.mock("../native/T3ComposerEditor", () => import("../native/T3ComposerEditor.ios"));
+vi.mock("../native/C67ComposerEditor", () => import("../native/C67ComposerEditor.ios"));
 vi.mock("react-native", () => ({ StyleSheet: { flatten: (style: unknown) => style } }));
 vi.mock("expo-file-system", () => ({
   Directory: class {
@@ -148,7 +148,7 @@ import {
   useComposerDraft,
 } from "../state/use-composer-drafts";
 import { ComposerEditor } from "./ComposerEditor";
-import type { ComposerEditorHandle } from "../native/T3ComposerEditor.types";
+import type { ComposerEditorHandle } from "../native/C67ComposerEditor.types";
 
 const DRAFT_KEY = "environment:thread";
 

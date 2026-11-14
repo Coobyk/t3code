@@ -1,6 +1,6 @@
 import { expect } from "e2e";
 
-import { IOS, test } from "./t3-mobile.ts";
+import { IOS, test } from "./67-mobile.ts";
 
 test(
   "The iOS app lists a seeded thread and opens its history",

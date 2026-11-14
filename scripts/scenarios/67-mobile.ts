@@ -9,7 +9,7 @@ import * as Schema from "effect/Schema";
 
 import { APP_DIR, MOBILE, MOBILE_T3_HOME } from "../e2e.config.ts";
 import { run, ScenarioError } from "./shell.ts";
-import { makeState, runPromise, type T3State } from "./t3.ts";
+import { makeState, runPromise, type T3State } from "./67.ts";
 
 const APP_ID = "com.t3tools.t3code.dev";
 const SCHEME = "t3code-dev";

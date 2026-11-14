@@ -74,12 +74,12 @@ const SnapShotIcon = createLucideIcon("snap-shot", [
 ]);
 
 const T3ConnectSidebarSignIn = lazy(() =>
-  import("../clerk/T3ConnectSidebarSignIn").then((module) => ({
+  import("../clerk/C67ConnectSidebarSignIn").then((module) => ({
     default: module.T3ConnectSidebarSignIn,
   })),
 );
 const T3ConnectSidebarAvatar = lazy(() =>
-  import("../clerk/T3ConnectSidebarSignIn").then((module) => ({
+  import("../clerk/C67ConnectSidebarSignIn").then((module) => ({
     default: module.T3ConnectSidebarAvatar,
   })),
 );

@@ -41,7 +41,7 @@ import { cn } from "../../lib/cn";
 import { deriveBottomControlInsets } from "../../lib/reserved-regions";
 import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
 import { useNativeLayoutMetrics } from "../../native/native-layout-metrics";
-import { T3KeyboardCommands } from "../../native/T3KeyboardCommands";
+import { T3KeyboardCommands } from "../../native/C67KeyboardCommands";
 import {
   useProjects,
   useServerConfigs,

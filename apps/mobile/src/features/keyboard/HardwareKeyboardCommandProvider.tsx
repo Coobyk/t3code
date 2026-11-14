@@ -19,7 +19,7 @@ import {
   firstWorkspaceDetailOpen,
   workspaceHasColumns,
 } from "../layout/workspace/workspace-selection-store";
-import { T3KeyboardCommands } from "../../native/T3KeyboardCommands";
+import { T3KeyboardCommands } from "../../native/C67KeyboardCommands";
 import { useThreadShell } from "../../state/entities";
 import type { GitActionProgress } from "../../state/use-vcs-action-state";
 import { GitActionProgressOverlay } from "../threads/GitActionProgressOverlay";

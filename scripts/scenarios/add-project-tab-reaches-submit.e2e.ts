@@ -1,6 +1,6 @@
 import { expect } from "e2e";
 
-import { test, WEB } from "./t3.ts";
+import { test, WEB } from "./67.ts";
 
 test(
   "Tab moves from the add-project Git URL field to its submit button",
