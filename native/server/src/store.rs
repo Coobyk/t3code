@@ -96,12 +96,10 @@ enum StoreCmd {
         reply: Reply<Option<Value>>,
     },
     GetRun {
-        thread_id: String,
         run_id: String,
         reply: Reply<Option<Value>>,
     },
     GetTurnItem {
-        thread_id: String,
         item_id: String,
         reply: Reply<Option<Value>>,
     },
@@ -257,8 +255,8 @@ impl StoreHandle {
 
     pub async fn get_run(&self, thread_id: &str, run_id: &str) -> Option<Value> {
         let (tx, rx) = oneshot::channel();
+        let _ = thread_id; // lookups are by global id
         self.send(StoreCmd::GetRun {
-            thread_id: thread_id.into(),
             run_id: run_id.into(),
             reply: tx,
         });
@@ -267,8 +265,8 @@ impl StoreHandle {
 
     pub async fn get_turn_item(&self, thread_id: &str, item_id: &str) -> Option<Value> {
         let (tx, rx) = oneshot::channel();
+        let _ = thread_id;
         self.send(StoreCmd::GetTurnItem {
-            thread_id: thread_id.into(),
             item_id: item_id.into(),
             reply: tx,
         });
@@ -683,11 +681,7 @@ fn actor_loop(conn: Connection, rx: std_mpsc::Receiver<StoreCmd>) {
             StoreCmd::GetThread { thread_id, reply } => {
                 let _ = reply.send(get_thread_row(&conn, &thread_id));
             }
-            StoreCmd::GetRun {
-                thread_id: _,
-                run_id,
-                reply,
-            } => {
+            StoreCmd::GetRun { run_id, reply } => {
                 let v = conn
                     .query_row(
                         "SELECT payload_json FROM orchestration_v2_projection_runs WHERE run_id = ?1",
@@ -698,11 +692,7 @@ fn actor_loop(conn: Connection, rx: std_mpsc::Receiver<StoreCmd>) {
                     .and_then(|s| serde_json::from_str(&s).ok());
                 let _ = reply.send(v);
             }
-            StoreCmd::GetTurnItem {
-                thread_id: _,
-                item_id,
-                reply,
-            } => {
+            StoreCmd::GetTurnItem { item_id, reply } => {
                 let v = conn
                     .query_row(
                         "SELECT payload_json FROM orchestration_v2_projection_turn_items WHERE turn_item_id = ?1",
