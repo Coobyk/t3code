@@ -121,23 +121,93 @@ fn parse_thread(v: &Value) -> ShellThread {
     }
 }
 
+fn first_lines(v: &Value, max: usize) -> Option<String> {
+    let s = v.as_str()?;
+    let lines: Vec<&str> = s.lines().take(max).collect();
+    if lines.is_empty() {
+        None
+    } else {
+        Some(lines.join("\n"))
+    }
+}
+
 fn turn_item_body(item: &Value) -> Option<String> {
     let kind = item["type"].as_str()?;
     let text = match kind {
         "user_message" | "assistant_message" | "reasoning" | "system_notice" | "error" => {
-            item["text"].as_str().map(|s| s.to_string())
+            item["text"].as_str().or_else(|| item["message"].as_str()).map(|s| s.to_string())
         }
         "proposed_plan" => item["markdown"].as_str().map(|s| s.to_string()),
-        "command_execution" => Some(
-            item["input"]
-                .as_str()
-                .map(|i| format!("$ {i}"))
-                .unwrap_or_else(|| "command".to_string()),
+        "command_execution" => {
+            let cmd = item["input"].as_str().unwrap_or("command");
+            let mut out = format!("$ {cmd}");
+            if let Some(exit) = item["exitCode"].as_i64() {
+                out.push_str(&format!("  (exit {exit})"));
+            }
+            if let Some(o) = first_lines(&item["output"], 12) {
+                out.push_str(&format!("\n{o}"));
+            }
+            Some(out)
+        }
+        "dynamic_tool" => {
+            let name = item["toolName"].as_str().unwrap_or("tool");
+            let mut out = name.to_string();
+            if let Some(title) = item["title"].as_str() {
+                out.push_str(&format!("  {title}"));
+            }
+            if let Some(o) = first_lines(&item["output"], 10) {
+                out.push_str(&format!("\n{o}"));
+            }
+            Some(out)
+        }
+        "file_change" => {
+            let f = item["fileName"].as_str()?;
+            let mut out = format!("edited {f}");
+            let adds = item["additions"].as_u64().unwrap_or(0);
+            let dels = item["deletions"].as_u64().unwrap_or(0);
+            if adds + dels > 0 {
+                out.push_str(&format!("  +{adds} -{dels}"));
+            }
+            Some(out)
+        }
+        "todo_list" => {
+            let steps = item["steps"].as_array()?;
+            let mut lines = Vec::new();
+            for s in steps.iter().take(12) {
+                let title = s["content"].as_str().or_else(|| s["title"].as_str()).unwrap_or("step");
+                let status = s["status"].as_str().unwrap_or("pending");
+                let mark = match status {
+                    "completed" => "☑",
+                    "in_progress" | "running" => "▸",
+                    _ => "☐",
+                };
+                lines.push(format!("{mark} {title}"));
+            }
+            Some(lines.join("\n"))
+        }
+        "checkpoint" => item["files"].as_array().map(|f| format!("checkpoint: {} files", f.len())),
+        "user_input_request" => {
+            let qs = item["questions"].as_array()?;
+            let line = qs
+                .iter()
+                .filter_map(|q| q["question"].as_str().or_else(|| q["header"].as_str()))
+                .collect::<Vec<_>>()
+                .join(" ");
+            Some(line)
+        }
+        "approval_request" => Some(
+            item["prompt"].as_str().unwrap_or("approval requested").to_string(),
         ),
-        "file_change" => item["fileName"]
-            .as_str()
-            .map(|f| format!("edited {f}")),
-        "todo_list" => item["steps"].as_array().map(|s| format!("{} steps", s.len())),
+        "notification" => item["message"].as_str().or_else(|| item["text"].as_str()).map(|s| s.to_string()),
+        "compaction" => Some("context compacted".to_string()),
+        "subagent" => {
+            let p = item["prompt"].as_str().unwrap_or("subagent");
+            let mut out = format!("subagent: {}", p.chars().take(80).collect::<String>());
+            if let Some(r) = item["result"].as_str() {
+                out.push_str(&format!("\n{}", r.lines().take(6).collect::<Vec<_>>().join("\n")));
+            }
+            Some(out)
+        }
         _ => None,
     };
     text.filter(|t| !t.is_empty())
@@ -453,7 +523,9 @@ fn handle_frame(
                         .unwrap_or_default();
                     let _ = events.send_blocking(ShellEvent::OlderSettledThreads { threads });
                 }
-                if frame["exit"]["_tag"].as_str() != Some("Success") {
+                // Interrupts are expected when we swap thread subscriptions.
+                let is_interrupt = frame["exit"]["cause"]["_tag"].as_str() == Some("Interrupt");
+                if frame["exit"]["_tag"].as_str() != Some("Success") && !is_interrupt {
                     let _ = events.send_blocking(ShellEvent::Error(format!(
                         "request failed: {}",
                         frame["exit"]
