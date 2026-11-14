@@ -344,6 +344,7 @@ fn run_inner(
         std::collections::HashMap::new();
     let mut pending_commands: std::collections::VecDeque<ClientCommand> =
         [ClientCommand::SubscribeShell, ClientCommand::GetOlderSettled].into();
+    let mut pending = String::new();
 
     loop {
         if let Some(command) = pending_commands.pop_front() {
@@ -359,7 +360,23 @@ fn run_inner(
 
         match socket.read() {
             Ok(tungstenite::Message::Text(text)) => {
-                handle_frame(&text, &mut socket, &events, &mut subscriptions)?;
+                // Large frames arrive split: every part but the last is
+                // prefixed with \u{1e}. Accumulate until the tail lands.
+                if let Some(part) = text.strip_prefix("\u{1e}") {
+                    pending.push_str(part);
+                } else {
+                    let whole = if pending.is_empty() {
+                        text.to_string()
+                    } else {
+                        pending.push_str(&text);
+                        std::mem::take(&mut pending)
+                    };
+                    if let Err(e) =
+                        handle_frame(&whole, &mut socket, &events, &mut subscriptions)
+                    {
+                        eprintln!("[frame] dropped: {e}");
+                    }
+                }
             }
             Ok(tungstenite::Message::Ping(payload)) => {
                 let _ = socket.send(tungstenite::Message::Pong(payload));
@@ -454,11 +471,14 @@ fn send_command(
             "requestId": request_id,
         }),
     };
+    if std::env::var("C67_DEBUG").is_ok() {
+        eprintln!("[send] id={} tag={:?}", id, frame["tag"].as_str());
+    }
     socket.send(tungstenite::Message::Text(frame.to_string().into()))
 }
 
 fn handle_frame(
-    text: &tungstenite::Utf8Bytes,
+    text: &str,
     socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
     events: &Sender<ShellEvent>,
     subscriptions: &mut std::collections::HashMap<u64, SubKind>,
@@ -476,7 +496,11 @@ fn handle_frame(
         .map_err(|e| format!("frame decode failed: {e}"))?;
 
     for frame in frames {
-        match frame["_tag"].as_str() {
+        if std::env::var("C67_DEBUG").is_ok() {
+        eprintln!("[frame] tag={:?} req={:?}",
+            frame["_tag"].as_str(), frame["requestId"]);
+    }
+    match frame["_tag"].as_str() {
             Some("Chunk") => {
                 let request_id = frame["requestId"].as_u64().unwrap_or(0);
                 // Stream chunks are windowed (8 per request): ack each one so the

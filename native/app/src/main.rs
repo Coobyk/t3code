@@ -260,9 +260,14 @@ impl AppView {
     fn select_thread(&mut self, thread_id: SharedString, cx: &mut Context<Self>) {
         self.thread_items.clear();
         if let Some(commands) = &self.commands {
-            let _ = commands.send(ClientCommand::SubscribeThread {
-                thread_id: thread_id.to_string(),
-            });
+            if commands
+                .send(ClientCommand::SubscribeThread {
+                    thread_id: thread_id.to_string(),
+                })
+                .is_err()
+            {
+                eprintln!("[ui] command channel closed");
+            }
         }
         self.state.selected = Some(thread_id);
         cx.notify();
