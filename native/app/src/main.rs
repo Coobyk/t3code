@@ -5,7 +5,7 @@ mod theme;
 
 use gpui::{AppContext, Focusable, prelude::*, rgb,
     App, Bounds, Context, Entity, IntoElement, KeyBinding, MouseButton, Render,
-    SharedString, Window, WindowBounds, WindowOptions, div, px, size,
+    ScrollHandle, SharedString, Window, WindowBounds, WindowOptions, div, px, size,
 };
 use gpui_platform::application;
 use model::{AppState, ConnectionStatus, Role};
@@ -17,6 +17,7 @@ struct AppView {
     composer: Entity<TextField>,
     commands: Option<std::sync::mpsc::Sender<ClientCommand>>,
     thread_items: Vec<net::TurnItemView>,
+    scroll_handle: ScrollHandle,
 }
 
 impl AppView {
@@ -62,6 +63,7 @@ impl AppView {
             composer,
             commands,
             thread_items: Vec::new(),
+            scroll_handle: ScrollHandle::new(),
         }
     }
 
@@ -133,11 +135,42 @@ impl AppView {
             }
             ShellEvent::ThreadSnapshot { items } => {
                 self.thread_items = items;
+                self.scroll_handle.scroll_to_bottom();
             }
             ShellEvent::ThreadItemUpdated { item } => {
                 match self.thread_items.iter().position(|i| i.id == item.id) {
                     Some(i) => self.thread_items[i] = item,
                     None => self.thread_items.push(item),
+                }
+                self.scroll_handle.scroll_to_bottom();
+            }
+            ShellEvent::ProjectsRefreshed { projects } => {
+                for p in projects {
+                    let entry = model::Project {
+                        id: p.id.clone().into(),
+                        name: p.title.into(),
+                        path: p.workspace_root.into(),
+                        expanded: true,
+                    };
+                    match self.state.projects.iter().position(|e| e.id.as_ref() == p.id) {
+                        Some(i) => self.state.projects[i] = entry,
+                        None => self.state.projects.push(entry),
+                    }
+                }
+            }
+            ShellEvent::OlderSettledThreads { threads } => {
+                for thread in threads {
+                    if thread.deleted
+                        || self.state.threads.iter().any(|t| t.id.as_ref() == thread.id)
+                    {
+                        continue;
+                    }
+                    self.state.threads.push(model::Thread {
+                        id: thread.id.into(),
+                        project_id: thread.project_id.into(),
+                        title: thread.title.into(),
+                        status: thread.status.into(),
+                    });
                 }
             }
             ShellEvent::Error(e) => {
@@ -356,6 +389,7 @@ impl AppView {
             .flex_col()
             .flex_1()
             .overflow_y_scroll()
+            .track_scroll(&self.scroll_handle)
             .p_4()
             .gap_3();
 

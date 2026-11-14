@@ -83,6 +83,10 @@ pub enum ShellEvent {
     ThreadRemoved { thread_id: String },
     ThreadSnapshot { items: Vec<TurnItemView> },
     ThreadItemUpdated { item: TurnItemView },
+    OlderSettledThreads { threads: Vec<ShellThread> },
+    /// Enrichment refresh: `resolvedRepositoryIdentityRoots` is present, so the
+    /// snapshot carries project updates only — threads must be preserved.
+    ProjectsRefreshed { projects: Vec<ShellProject> },
     Error(String),
     Disconnected(String),
 }
@@ -90,6 +94,7 @@ pub enum ShellEvent {
 #[derive(Debug)]
 pub enum ClientCommand {
     SubscribeShell,
+    GetOlderSettled,
     SubscribeThread { thread_id: String },
     /// A raw `OrchestrationV2Command` JSON payload.
     Dispatch { command: Value },
@@ -180,6 +185,14 @@ fn parse_stream_item(v: &Value) -> Option<ShellEvent> {
     match v["kind"].as_str()? {
         "snapshot" => {
             let s = &v["snapshot"];
+            if v["resolvedRepositoryIdentityRoots"].is_array() {
+                return Some(ShellEvent::ProjectsRefreshed {
+                    projects: s["projects"]
+                        .as_array()
+                        .map(|a| a.iter().map(parse_project).collect())
+                        .unwrap_or_default(),
+                });
+            }
             Some(ShellEvent::Snapshot(ShellSnapshot {
                 projects: s["projects"]
                     .as_array()
@@ -259,10 +272,11 @@ fn run_inner(
     let mut next_id: u64 = 1;
     let mut subscriptions: std::collections::HashMap<u64, SubKind> =
         std::collections::HashMap::new();
-    let mut pending_command = Some(ClientCommand::SubscribeShell);
+    let mut pending_commands: std::collections::VecDeque<ClientCommand> =
+        [ClientCommand::SubscribeShell, ClientCommand::GetOlderSettled].into();
 
     loop {
-        if let Some(command) = pending_command.take() {
+        if let Some(command) = pending_commands.pop_front() {
             send_command(&mut socket, &mut subscriptions, next_id, &command)
                 .map_err(|e| format!("send failed: {e}"))?;
             next_id += 1;
@@ -298,6 +312,7 @@ fn run_inner(
 enum SubKind {
     Shell,
     Thread,
+    OlderSettled,
 }
 
 fn send_command(
@@ -310,7 +325,24 @@ fn send_command(
         ClientCommand::SubscribeShell => {
             subscriptions.insert(id, SubKind::Shell);
         }
+        ClientCommand::GetOlderSettled => {
+            subscriptions.insert(id, SubKind::OlderSettled);
+        }
         ClientCommand::SubscribeThread { .. } => {
+            // One live thread stream at a time: interrupt the previous one.
+            let stale: Vec<u64> = subscriptions
+                .iter()
+                .filter(|(_, kind)| matches!(kind, SubKind::Thread))
+                .map(|(rid, _)| *rid)
+                .collect();
+            for rid in stale {
+                subscriptions.remove(&rid);
+                let _ = socket.send(tungstenite::Message::Text(
+                    json!({"_tag": "Interrupt", "requestId": rid, "interruptors": []})
+                        .to_string()
+                        .into(),
+                ));
+            }
             subscriptions.insert(id, SubKind::Thread);
         }
         _ => {}
@@ -321,6 +353,16 @@ fn send_command(
             "id": id,
             "tag": "orchestration.subscribeShell",
             "payload": { "requestCompletionMarker": true },
+            "headers": [],
+        }),
+        ClientCommand::GetOlderSettled => json!({
+            "_tag": "Request",
+            "id": id,
+            "tag": "orchestration.getOlderSettledThreads",
+            "payload": {
+                "before": { "settledAt": "2999-01-01T00:00:00.000Z" },
+                "limit": 50,
+            },
             "headers": [],
         }),
         ClientCommand::SubscribeThread { thread_id } => json!({
@@ -349,7 +391,7 @@ fn handle_frame(
     text: &tungstenite::Utf8Bytes,
     socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
     events: &Sender<ShellEvent>,
-    subscriptions: &std::collections::HashMap<u64, SubKind>,
+    subscriptions: &mut std::collections::HashMap<u64, SubKind>,
 ) -> Result<(), String> {
     let frames: Vec<Value> = serde_json::from_str::<Value>(text)
         .map(|v| if v.is_array() { vec![v] } else { vec![v] })
@@ -400,6 +442,17 @@ fn handle_frame(
                 }
             }
             Some("Exit") => {
+                let request_id = frame["requestId"].as_u64();
+                let kind = request_id.and_then(|rid| subscriptions.remove(&rid));
+                if frame["exit"]["_tag"].as_str() == Some("Success")
+                    && matches!(kind, Some(SubKind::OlderSettled))
+                {
+                    let threads = frame["exit"]["value"]["threads"]
+                        .as_array()
+                        .map(|a| a.iter().map(parse_thread).collect())
+                        .unwrap_or_default();
+                    let _ = events.send_blocking(ShellEvent::OlderSettledThreads { threads });
+                }
                 if frame["exit"]["_tag"].as_str() != Some("Success") {
                     let _ = events.send_blocking(ShellEvent::Error(format!(
                         "request failed: {}",
