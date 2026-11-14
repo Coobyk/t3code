@@ -16,6 +16,7 @@ struct AppView {
     state: AppState,
     composer: Entity<TextField>,
     commands: Option<std::sync::mpsc::Sender<ClientCommand>>,
+    thread_items: Vec<net::TurnItemView>,
 }
 
 impl AppView {
@@ -60,6 +61,7 @@ impl AppView {
             state,
             composer,
             commands,
+            thread_items: Vec::new(),
         }
     }
 
@@ -129,6 +131,15 @@ impl AppView {
             ShellEvent::ThreadRemoved { thread_id, .. } => {
                 self.state.threads.retain(|t| t.id.as_ref() != thread_id);
             }
+            ShellEvent::ThreadSnapshot { items } => {
+                self.thread_items = items;
+            }
+            ShellEvent::ThreadItemUpdated { item } => {
+                match self.thread_items.iter().position(|i| i.id == item.id) {
+                    Some(i) => self.thread_items[i] = item,
+                    None => self.thread_items.push(item),
+                }
+            }
             ShellEvent::Error(e) => {
                 self.state.connection = ConnectionStatus::Failed(e.into());
             }
@@ -176,6 +187,11 @@ impl AppView {
                         }),
                     );
                     self.state.selected = Some(thread_id.clone().into());
+                    if let Some(commands) = &self.commands {
+                        let _ = commands.send(ClientCommand::SubscribeThread {
+                            thread_id: thread_id.clone(),
+                        });
+                    }
                     thread_id
                 }
             };
@@ -209,6 +225,7 @@ impl AppView {
     }
 
     fn select_thread(&mut self, thread_id: SharedString, cx: &mut Context<Self>) {
+        self.thread_items.clear();
         if let Some(commands) = &self.commands {
             let _ = commands.send(ClientCommand::SubscribeThread {
                 thread_id: thread_id.to_string(),
@@ -341,6 +358,72 @@ impl AppView {
             .overflow_y_scroll()
             .p_4()
             .gap_3();
+
+        if self.state.connection != ConnectionStatus::Mock {
+            if self.thread_items.is_empty() {
+                return list.child(
+                    div()
+                        .flex_1()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_color(theme::fg_muted())
+                        .text_sm()
+                        .child("No messages yet — say something to the agent."),
+                );
+            }
+            for (i, item) in self.thread_items.iter().enumerate() {
+                let body = item
+                    .body
+                    .clone()
+                    .or_else(|| item.title.clone())
+                    .unwrap_or_else(|| item.kind.clone());
+                let dimmed = item.streaming || item.status == "running";
+                let row = match item.kind.as_str() {
+                    "user_message" => div().flex().justify_end().child(
+                        div()
+                            .px_3()
+                            .py_2()
+                            .rounded_lg()
+                            .text_sm()
+                            .max_w(px(560.))
+                            .bg(theme::user_bubble())
+                            .text_color(theme::fg())
+                            .child(body),
+                    ),
+                    "assistant_message" | "reasoning" | "proposed_plan" => {
+                        div().flex().justify_start().child(
+                            div()
+                                .px_3()
+                                .py_2()
+                                .rounded_lg()
+                                .text_sm()
+                                .max_w(px(560.))
+                                .bg(theme::raised())
+                                .border_1()
+                                .border_color(theme::border())
+                                .text_color(theme::fg())
+                                .child(body),
+                        )
+                    }
+                    _ => div().flex().justify_start().child(
+                        div()
+                            .px_3()
+                            .py_1()
+                            .rounded_md()
+                            .text_xs()
+                            .text_color(theme::fg_muted())
+                            .child(if dimmed {
+                                format!("{}  {} …", item.kind, body)
+                            } else {
+                                format!("{}  {}", item.kind, body)
+                            }),
+                    ),
+                };
+                list = list.child(div().id(("item", i)).child(row));
+            }
+            return list;
+        }
 
         if self.state.messages.is_empty() {
             return list.child(

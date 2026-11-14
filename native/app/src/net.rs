@@ -62,6 +62,17 @@ pub struct ShellSnapshot {
     pub threads: Vec<ShellThread>,
 }
 
+/// A render-ready view of one `OrchestrationV2TurnItem`.
+#[derive(Debug, Clone)]
+pub struct TurnItemView {
+    pub id: String,
+    pub kind: String,
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub streaming: bool,
+    pub status: String,
+}
+
 #[derive(Debug)]
 pub enum ShellEvent {
     Connected,
@@ -70,6 +81,8 @@ pub enum ShellEvent {
     ProjectRemoved { project_id: String },
     ThreadUpserted { thread: ShellThread },
     ThreadRemoved { thread_id: String },
+    ThreadSnapshot { items: Vec<TurnItemView> },
+    ThreadItemUpdated { item: TurnItemView },
     Error(String),
     Disconnected(String),
 }
@@ -100,6 +113,66 @@ fn parse_thread(v: &Value) -> ShellThread {
         status: v["status"].as_str().unwrap_or("idle").to_string(),
         archived: !v["archivedAt"].is_null(),
         deleted: !v["deletedAt"].is_null(),
+    }
+}
+
+fn turn_item_body(item: &Value) -> Option<String> {
+    let kind = item["type"].as_str()?;
+    let text = match kind {
+        "user_message" | "assistant_message" | "reasoning" | "system_notice" | "error" => {
+            item["text"].as_str().map(|s| s.to_string())
+        }
+        "proposed_plan" => item["markdown"].as_str().map(|s| s.to_string()),
+        "command_execution" => Some(
+            item["input"]
+                .as_str()
+                .map(|i| format!("$ {i}"))
+                .unwrap_or_else(|| "command".to_string()),
+        ),
+        "file_change" => item["fileName"]
+            .as_str()
+            .map(|f| format!("edited {f}")),
+        "todo_list" => item["steps"].as_array().map(|s| format!("{} steps", s.len())),
+        _ => None,
+    };
+    text.filter(|t| !t.is_empty())
+}
+
+fn parse_turn_item(item: &Value) -> Option<TurnItemView> {
+    Some(TurnItemView {
+        id: item["id"].as_str()?.to_string(),
+        kind: item["type"].as_str()?.to_string(),
+        title: item["title"].as_str().map(|s| s.to_string()),
+        body: turn_item_body(item),
+        streaming: item["streaming"].as_bool().unwrap_or(false),
+        status: item["status"].as_str().unwrap_or("done").to_string(),
+    })
+}
+
+/// One item of the `orchestration.subscribeThread` stream.
+fn parse_thread_stream_item(v: &Value) -> Option<ShellEvent> {
+    match v["kind"].as_str()? {
+        "snapshot" => {
+            let items = v["projection"]["visibleTurnItems"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|entry| parse_turn_item(&entry["item"]))
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(ShellEvent::ThreadSnapshot { items })
+        }
+        "event" => {
+            let event = &v["event"];
+            if event["type"].as_str() == Some("turn-item.updated") {
+                parse_turn_item(&event["payload"])
+                    .map(|item| ShellEvent::ThreadItemUpdated { item })
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
@@ -184,23 +257,25 @@ fn run_inner(
     let _ = events.send_blocking(ShellEvent::Connected);
 
     let mut next_id: u64 = 1;
+    let mut subscriptions: std::collections::HashMap<u64, SubKind> =
+        std::collections::HashMap::new();
     let mut pending_command = Some(ClientCommand::SubscribeShell);
 
     loop {
         if let Some(command) = pending_command.take() {
-            send_command(&mut socket, next_id, &command)
+            send_command(&mut socket, &mut subscriptions, next_id, &command)
                 .map_err(|e| format!("send failed: {e}"))?;
             next_id += 1;
         }
         while let Ok(command) = commands.try_recv() {
-            send_command(&mut socket, next_id, &command)
+            send_command(&mut socket, &mut subscriptions, next_id, &command)
                 .map_err(|e| format!("send failed: {e}"))?;
             next_id += 1;
         }
 
         match socket.read() {
             Ok(tungstenite::Message::Text(text)) => {
-                handle_frame(&text, &mut socket, &events)?;
+                handle_frame(&text, &mut socket, &events, &mut subscriptions)?;
             }
             Ok(tungstenite::Message::Ping(payload)) => {
                 let _ = socket.send(tungstenite::Message::Pong(payload));
@@ -219,11 +294,27 @@ fn run_inner(
     }
 }
 
+#[derive(Debug)]
+enum SubKind {
+    Shell,
+    Thread,
+}
+
 fn send_command(
     socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
+    subscriptions: &mut std::collections::HashMap<u64, SubKind>,
     id: u64,
     command: &ClientCommand,
 ) -> Result<(), tungstenite::Error> {
+    match command {
+        ClientCommand::SubscribeShell => {
+            subscriptions.insert(id, SubKind::Shell);
+        }
+        ClientCommand::SubscribeThread { .. } => {
+            subscriptions.insert(id, SubKind::Thread);
+        }
+        _ => {}
+    }
     let frame = match command {
         ClientCommand::SubscribeShell => json!({
             "_tag": "Request",
@@ -258,6 +349,7 @@ fn handle_frame(
     text: &tungstenite::Utf8Bytes,
     socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
     events: &Sender<ShellEvent>,
+    subscriptions: &std::collections::HashMap<u64, SubKind>,
 ) -> Result<(), String> {
     let frames: Vec<Value> = serde_json::from_str::<Value>(text)
         .map(|v| if v.is_array() { vec![v] } else { vec![v] })
@@ -274,9 +366,34 @@ fn handle_frame(
     for frame in frames {
         match frame["_tag"].as_str() {
             Some("Chunk") => {
+                let request_id = frame["requestId"].as_u64().unwrap_or(0);
+                // Stream chunks are windowed (8 per request): ack each one so the
+                // server keeps writing.
+                let _ = socket.send(tungstenite::Message::Text(
+                    json!({"_tag": "Ack", "requestId": request_id})
+                        .to_string()
+                        .into(),
+                ));
+                let is_thread = matches!(subscriptions.get(&request_id), Some(SubKind::Thread));
+                if std::env::var("C67_DEBUG").is_ok() {
+                    eprintln!("[chunk] req={request_id} is_thread={is_thread} kinds={:?}",
+                        frame["values"].as_array().map(|a| a.iter().map(|v| v["kind"].as_str().unwrap_or("?").to_string()).collect::<Vec<_>>()));
+                }
                 if let Some(values) = frame["values"].as_array() {
                     for value in values {
-                        if let Some(event) = parse_stream_item(value) {
+                        let parsed = if is_thread {
+                            if std::env::var("C67_DEBUG").is_ok()
+                                && value["kind"].as_str() == Some("event")
+                            {
+                                eprintln!("[ev] type={:?} parsed={}",
+                                    value["event"]["type"].as_str(),
+                                    parse_thread_stream_item(value).is_some());
+                            }
+                            parse_thread_stream_item(value)
+                        } else {
+                            parse_stream_item(value)
+                        };
+                        if let Some(event) = parsed {
                             let _ = events.send_blocking(event);
                         }
                     }
