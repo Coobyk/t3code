@@ -94,9 +94,17 @@ impl AppView {
                         status: t.status.into(),
                     })
                     .collect();
-                if self.state.selected.is_none() {
-                    self.state.selected =
-                        self.state.threads.first().map(|t| t.id.clone());
+                if self.state.selected.is_none()
+                    && let Some(first) = self.state.threads.first()
+                {
+                    let id = first.id.clone();
+                    self.state.selected = Some(id.clone());
+                    self.thread_items.clear();
+                    if let Some(commands) = &self.commands {
+                        let _ = commands.send(ClientCommand::SubscribeThread {
+                            thread_id: id.to_string(),
+                        });
+                    }
                 }
             }
             ShellEvent::ProjectUpserted(p) => {
@@ -255,6 +263,18 @@ impl AppView {
         if let Some(commands) = &self.commands {
             let _ = commands.send(ClientCommand::Dispatch { command });
         }
+    }
+
+    fn stop_thread(&mut self, cx: &mut Context<Self>) {
+        let Some(thread) = self.state.selected_thread() else {
+            return;
+        };
+        self.dispatch(serde_json::json!({
+            "type": "thread.stop",
+            "commandId": uuid::Uuid::new_v4().to_string(),
+            "threadId": thread.id.to_string(),
+        }));
+        cx.notify();
     }
 
     fn select_thread(&mut self, thread_id: SharedString, cx: &mut Context<Self>) {
@@ -532,11 +552,16 @@ impl AppView {
 
 impl Render for AppView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let title = self
-            .state
-            .selected_thread()
+        let selected_thread = self.state.selected_thread();
+        let title = selected_thread
             .map(|t| t.title.clone())
             .unwrap_or_else(|| "67 Code".into());
+        let running = selected_thread.is_some_and(|t| {
+            !matches!(
+                t.status.as_ref(),
+                "idle" | "completed" | "failed" | "stopped" | "interrupted"
+            )
+        });
         div()
             .flex()
             .size_full()
@@ -555,11 +580,32 @@ impl Render for AppView {
                             .px_4()
                             .flex()
                             .items_center()
+                            .justify_between()
                             .border_b_1()
                             .border_color(theme::border())
                             .text_sm()
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .child(title),
+                            .child(title)
+                            .when(running, |header| {
+                                header.child(
+                                    div()
+                                        .id("stop")
+                                        .px_2()
+                                        .py_1()
+                                        .rounded_md()
+                                        .bg(rgb(0x7a2e2e))
+                                        .text_xs()
+                                        .text_color(gpui::white())
+                                        .hover(|s| s.bg(rgb(0x9a3a3a)))
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(|this, _ev, _window, cx| {
+                                                this.stop_thread(cx)
+                                            }),
+                                        )
+                                        .child("Stop"),
+                                )
+                            }),
                     )
                     .child(self.render_messages())
                     .child(self.render_composer()),
